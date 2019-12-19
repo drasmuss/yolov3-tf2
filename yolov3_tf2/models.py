@@ -157,11 +157,7 @@ def YoloOutput(filters, anchors, classes, name=None):
         x = inputs = Input(x_in.shape[1:])
         x = DarknetConv(x, filters * 2, 3)
         x = DarknetConv(x, anchors * (classes + 5), 1, batch_norm=False)
-        x = Lambda(
-            lambda x: tf.reshape(
-                x, (-1, tf.shape(x)[1], tf.shape(x)[2], anchors, classes + 5)
-            )
-        )(x)
+        x = tf.keras.layers.Reshape((x.shape[1], x.shape[2], anchors, classes + 5))(x)
         return tf.keras.Model(inputs, x, name=name)(x_in)
 
     return yolo_output
