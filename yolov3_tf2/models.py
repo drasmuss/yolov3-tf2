@@ -3,6 +3,7 @@ import tensorflow as tf
 from tensorflow.keras import Model
 from tensorflow.keras.layers import (
     Add,
+    BatchNormalization,
     Concatenate,
     Conv2D,
     Input,
@@ -14,7 +15,6 @@ from tensorflow.keras.layers import (
 )
 from tensorflow.keras.regularizers import l2
 from tensorflow.keras.losses import binary_crossentropy, sparse_categorical_crossentropy
-from .batch_norm import BatchNormalization
 from .utils import broadcast_iou
 
 
