@@ -1,5 +1,3 @@
-from absl import flags
-from absl.flags import FLAGS
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import Model
@@ -19,9 +17,6 @@ from tensorflow.keras.losses import binary_crossentropy, sparse_categorical_cros
 from .batch_norm import BatchNormalization
 from .utils import broadcast_iou
 
-flags.DEFINE_integer("yolo_max_boxes", 100, "maximum number of boxes per image")
-flags.DEFINE_float("yolo_iou_threshold", 0.5, "iou threshold")
-flags.DEFINE_float("yolo_score_threshold", 0.5, "score threshold")
 
 yolo_anchors = (
     np.array(
@@ -87,7 +82,7 @@ def DarknetBlock(x, filters, blocks):
 
 
 def Darknet(name=None):
-    x = inputs = Input([None, None, 3])
+    x = inputs = Input((None, None, 3))
     x = DarknetConv(x, 32, 3)
     x = DarknetBlock(x, 64, 1)
     x = DarknetBlock(x, 128, 2)  # skip connection
@@ -98,7 +93,7 @@ def Darknet(name=None):
 
 
 def DarknetTiny(name=None):
-    x = inputs = Input([None, None, 3])
+    x = inputs = Input((None, None, 3))
     x = DarknetConv(x, 16, 3)
     x = MaxPool2D(2, 2, "same")(x)
     x = DarknetConv(x, 32, 3)
@@ -198,7 +193,15 @@ def yolo_boxes(pred, anchors, classes):
     return bbox, objectness, class_probs, pred_box
 
 
-def yolo_nms(outputs, anchors, masks, classes):
+def yolo_nms(
+    outputs,
+    anchors,
+    masks,
+    classes,
+    iou_threshold=0.5,
+    score_threshold=0.5,
+    max_boxes=100,
+):
     # boxes, conf, type
     b, c, t = [], [], []
 
@@ -215,10 +218,10 @@ def yolo_nms(outputs, anchors, masks, classes):
     boxes, scores, classes, valid_detections = tf.image.combined_non_max_suppression(
         boxes=tf.reshape(bbox, (tf.shape(bbox)[0], -1, 1, 4)),
         scores=tf.reshape(scores, (tf.shape(scores)[0], -1, tf.shape(scores)[-1])),
-        max_output_size_per_class=FLAGS.yolo_max_boxes,
-        max_total_size=FLAGS.yolo_max_boxes,
-        iou_threshold=FLAGS.yolo_iou_threshold,
-        score_threshold=FLAGS.yolo_score_threshold,
+        max_output_size_per_class=max_boxes,
+        max_total_size=max_boxes,
+        iou_threshold=iou_threshold,
+        score_threshold=score_threshold,
     )
 
     return boxes, scores, classes, valid_detections
@@ -231,8 +234,10 @@ def YoloV3(
     masks=yolo_anchor_masks,
     classes=80,
     training=False,
+    iou_threshold=0.5,
+    score_threshold=0.5,
 ):
-    x = inputs = Input([size, size, channels], name="input")
+    x = inputs = Input((size, size, channels), name="input")
 
     x_36, x_61, x = Darknet(name="yolo_darknet")(x)
 
@@ -258,9 +263,17 @@ def YoloV3(
         lambda x: yolo_boxes(x, anchors[masks[2]], classes), name="yolo_boxes_2"
     )(output_2)
 
-    outputs = Lambda(lambda x: yolo_nms(x, anchors, masks, classes), name="yolo_nms")(
-        (boxes_0[:3], boxes_1[:3], boxes_2[:3])
-    )
+    outputs = Lambda(
+        lambda x: yolo_nms(
+            x,
+            anchors,
+            masks,
+            classes,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+        ),
+        name="yolo_nms",
+    )((boxes_0[:3], boxes_1[:3], boxes_2[:3]))
 
     return Model(inputs, outputs, name="yolov3")
 
