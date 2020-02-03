@@ -246,18 +246,41 @@ def YoloV3(
     x = YoloConv(128, name="yolo_conv_2")((x, x_36))
     output_2 = YoloOutput(128, len(masks[2]), classes, name="yolo_output_2")(x)
 
-    if training:
-        return Model(inputs, (output_0, output_1, output_2), name="yolov3")
+    outputs = output_0, output_1, output_2
+
+    if not training:
+        head = YoloV3TinyHead(
+            sizes=[o.shape.as_list()[1] for o in outputs],
+            anchors=anchors,
+            masks=masks,
+            classes=classes,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+        )
+        outputs = head(outputs)
+
+    return Model(inputs, outputs, name="yolov3")
+
+
+def YoloV3Head(
+    sizes=(None, None, None),
+    anchors=yolo_anchors,
+    masks=yolo_anchor_masks,
+    classes=80,
+    iou_threshold=0.5,
+    score_threshold=0.5,
+):
+    inputs = [Input([size, size, 3, 85]) for size in sizes]
 
     boxes_0 = Lambda(
         lambda x: yolo_boxes(x, anchors[masks[0]], classes), name="yolo_boxes_0"
-    )(output_0)
+    )(inputs[0])
     boxes_1 = Lambda(
         lambda x: yolo_boxes(x, anchors[masks[1]], classes), name="yolo_boxes_1"
-    )(output_1)
+    )(inputs[1])
     boxes_2 = Lambda(
         lambda x: yolo_boxes(x, anchors[masks[2]], classes), name="yolo_boxes_2"
-    )(output_2)
+    )(inputs[2])
 
     outputs = Lambda(
         lambda x: yolo_nms(
@@ -271,7 +294,7 @@ def YoloV3(
         name="yolo_nms",
     )((boxes_0[:3], boxes_1[:3], boxes_2[:3]))
 
-    return Model(inputs, outputs, name="yolov3")
+    return Model(inputs, outputs, name="yolov3head")
 
 
 def YoloV3Tiny(
@@ -281,6 +304,8 @@ def YoloV3Tiny(
     masks=yolo_tiny_anchor_masks,
     classes=80,
     training=False,
+    iou_threshold=0.5,
+    score_threshold=0.5,
 ):
     x = inputs = Input([size, size, channels], name="input")
 
@@ -292,19 +317,51 @@ def YoloV3Tiny(
     x = YoloConvTiny(128, name="yolo_conv_1")((x, x_8))
     output_1 = YoloOutput(128, len(masks[1]), classes, name="yolo_output_1")(x)
 
-    if training:
-        return Model(inputs, (output_0, output_1), name="yolov3")
+    outputs = output_0, output_1
+
+    if not training:
+        head = YoloV3TinyHead(
+            sizes=[o.shape.as_list()[1] for o in outputs],
+            anchors=anchors,
+            masks=masks,
+            classes=classes,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+        )
+        outputs = head(outputs)
+
+    return Model(inputs, outputs, name="yolov3tiny")
+
+
+def YoloV3TinyHead(
+    sizes=(None, None),
+    anchors=yolo_tiny_anchors,
+    masks=yolo_tiny_anchor_masks,
+    classes=80,
+    iou_threshold=0.5,
+    score_threshold=0.5,
+):
+    inputs = [Input([size, size, 3, 85]) for size in sizes]
 
     boxes_0 = Lambda(
         lambda x: yolo_boxes(x, anchors[masks[0]], classes), name="yolo_boxes_0"
-    )(output_0)
+    )(inputs[0])
     boxes_1 = Lambda(
         lambda x: yolo_boxes(x, anchors[masks[1]], classes), name="yolo_boxes_1"
-    )(output_1)
-    outputs = Lambda(lambda x: yolo_nms(x, anchors, masks, classes), name="yolo_nms")(
-        (boxes_0[:3], boxes_1[:3])
-    )
-    return Model(inputs, outputs, name="yolov3_tiny")
+    )(inputs[1])
+    outputs = Lambda(
+        lambda x: yolo_nms(
+            x,
+            anchors,
+            masks,
+            classes,
+            iou_threshold=iou_threshold,
+            score_threshold=score_threshold,
+        ),
+        name="yolo_nms",
+    )((boxes_0[:3], boxes_1[:3]))
+
+    return Model(inputs, outputs, name="yolov3tinyhead")
 
 
 def YoloLoss(anchors, classes=80, ignore_thresh=0.5):
