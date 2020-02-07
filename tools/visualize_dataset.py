@@ -4,6 +4,7 @@ from absl.flags import FLAGS
 import cv2
 import numpy as np
 import tensorflow as tf
+import tensorflow_datasets as tfds
 from yolov3_tf2.models import YoloV3, YoloV3Tiny
 from yolov3_tf2.dataset import load_tfrecord_dataset, transform_images
 from yolov3_tf2.utils import draw_outputs
@@ -15,10 +16,24 @@ flags.DEFINE_string("output", "./output.jpg", "path to output image")
 
 
 def main(_argv):
-    class_names = [c.strip() for c in open(FLAGS.classes).readlines()]
+    with open("../data/coco/2014/1.1.0/objects-label.labels.txt") as f:
+        class_names = [c.strip() for c in f.readlines()]
     logging.info("classes loaded")
 
-    dataset = load_tfrecord_dataset(FLAGS.dataset, FLAGS.classes, FLAGS.size)
+    data, info = tfds.load("coco", with_info=True, data_dir="../data")
+    dataset = data["train"].map(
+        lambda feat: (
+            feat["image"],
+            tf.concat(
+                (
+                    tf.gather(feat["objects"]["bbox"], [1, 0, 3, 2], axis=-1),
+                    tf.expand_dims(tf.cast(feat["objects"]["label"], tf.float32), -1),
+                ),
+                axis=-1,
+            ),
+        )
+    )
+
     dataset = dataset.shuffle(512)
 
     for image, labels in dataset.take(1):
